@@ -11,7 +11,7 @@ st.set_page_config(
 )
 
 # ----------------------------
-# ANIMATIONS (NO BG CHANGE)
+# UI ANIMATIONS (NO BG CHANGE)
 # ----------------------------
 st.markdown("""
 <style>
@@ -19,19 +19,27 @@ button {
     border-radius: 10px !important;
     transition: all 0.3s ease-in-out !important;
 }
-
 button:hover {
     transform: scale(1.05);
-    box-shadow: 0px 0px 12px rgba(0, 100, 255, 0.6);
+    box-shadow: 0px 0px 12px rgba(0, 120, 255, 0.6);
 }
-
 .fade-in {
-    animation: fadeIn 1s ease-in;
+    animation: fadeIn 0.8s ease-in;
 }
-
 @keyframes fadeIn {
     from {opacity: 0;}
     to {opacity: 1;}
+}
+.chat-box {
+    padding: 15px;
+    border-radius: 12px;
+    margin-bottom: 10px;
+}
+.user-msg {
+    background-color: #f0f2f6;
+}
+.ai-msg {
+    background-color: #e8f0ff;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -49,54 +57,64 @@ genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("models/gemini-2.5-flash")
 
 # ----------------------------
+# SESSION STATE
+# ----------------------------
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
+
+# ----------------------------
 # HEADER
 # ----------------------------
 st.markdown("<h1 class='fade-in'>🎓 E-Learning Doubt Clearing Assistant</h1>", unsafe_allow_html=True)
-st.markdown("Provide real-time, context-aware answers within a course environment.")
+st.markdown("Context-aware AI tutor for structured learning support.")
 
 # ----------------------------
-# INPUT SECTION
+# INPUT PANEL
 # ----------------------------
-col1, col2 = st.columns([1, 1.4])
+col1, col2 = st.columns([1, 1.5])
 
 with col1:
-    course_topic = st.text_input("Course Topic", placeholder="e.g., Calculus - Derivatives")
+    course_topic = st.text_input("Course Topic")
 
     lesson_content = st.text_area(
-        "Paste Lesson Content (Context)",
-        height=200,
-        placeholder="Paste relevant lecture or notes here..."
+        "Lesson Content (Context)",
+        height=200
     )
 
-    student_question = st.text_area(
-        "Student Doubt / Question",
-        height=100,
-        placeholder="What is confusing?"
-    )
-
-    explanation_mode = st.selectbox(
+    explanation_style = st.selectbox(
         "Explanation Style",
-        ["Step-by-Step", "Simple Explanation", "Advanced Detailed"]
+        ["Step-by-Step", "Simple", "Detailed", "Exam-Oriented"]
     )
 
     include_example = st.checkbox("Include Example")
-    include_practice = st.checkbox("Add Practice Question")
+    include_quiz = st.checkbox("Generate Practice Question")
 
-    generate_btn = st.button("📚 Clear Doubt")
+    if st.button("🗑 Reset Session"):
+        st.session_state.chat_history = []
+        st.rerun()
 
 # ----------------------------
-# GENERATION
+# CHAT INTERFACE
 # ----------------------------
-if generate_btn:
+with col2:
+    for role, msg in st.session_state.chat_history:
+        css_class = "user-msg" if role == "User" else "ai-msg"
+        st.markdown(f"<div class='chat-box {css_class}'><b>{role}:</b><br>{msg}</div>", unsafe_allow_html=True)
 
-    if not lesson_content or not student_question:
-        st.warning("Please provide lesson content and a question.")
-        st.stop()
+    student_question = st.chat_input("Ask your doubt here...")
 
-    with st.spinner("Analyzing question and generating answer..."):
+    if student_question:
 
-        prompt = f"""
-You are an expert course tutor.
+        if not lesson_content:
+            st.warning("Please provide lesson content first.")
+            st.stop()
+
+        st.session_state.chat_history.append(("User", student_question))
+
+        with st.spinner("Generating answer..."):
+
+            prompt = f"""
+You are an AI course tutor.
 
 Course Topic: {course_topic}
 
@@ -106,56 +124,48 @@ Lesson Content:
 Student Question:
 {student_question}
 
-Explain using ONLY the lesson context provided.
+Explain ONLY using the lesson content provided.
 
-Explanation Mode: {explanation_mode}
+Explanation Style: {explanation_style}
 Include Example: {include_example}
-Include Practice Question: {include_practice}
+Include Quiz: {include_quiz}
 
 Structure EXACTLY like this:
 
 DIRECT ANSWER:
 
-STEP-BY-STEP EXPLANATION:
+DETAILED EXPLANATION:
 
 EXAMPLE:
-(Only if enabled)
+(If enabled)
 
 PRACTICE QUESTION:
-(Only if enabled)
+(If enabled)
+
+COMMON MISTAKE TO AVOID:
 
 QUICK RECAP:
 
-CONFIDENCE LEVEL:
-(How confident are you that this answer is correct based on provided context)
+CONFIDENCE SCORE (0-100):
 """
 
-        response = model.generate_content(prompt)
-        answer = response.text
+            response = model.generate_content(prompt)
+            answer = response.text
 
-    with col2:
-        st.markdown("<div class='fade-in'>", unsafe_allow_html=True)
-
-        st.subheader("📘 AI Tutor Response")
-        st.markdown(answer)
-
-        st.progress(100)
-        st.caption("Doubt Cleared Successfully 🎯")
-
-        st.download_button(
-            "⬇ Download Answer",
-            answer,
-            file_name="doubt_solution.txt",
-            mime="text/plain"
-        )
-
-        if st.button("🔄 Regenerate Answer"):
-            st.rerun()
-
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.session_state.chat_history.append(("AI Tutor", answer))
+        st.rerun()
 
 # ----------------------------
-# FOOTER
+# DOWNLOAD SESSION
 # ----------------------------
-if lesson_content:
-    st.caption(f"Lesson Word Count: {len(lesson_content.split())}")
+if st.session_state.chat_history:
+    full_chat = ""
+    for role, msg in st.session_state.chat_history:
+        full_chat += f"{role}:\n{msg}\n\n"
+
+    st.download_button(
+        "⬇ Download Full Session",
+        full_chat,
+        file_name="learning_session.txt",
+        mime="text/plain"
+    )
